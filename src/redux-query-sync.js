@@ -136,6 +136,7 @@ function ReduxQuerySync({
 
         // Parse the current location's query string.
         const locationParams = new URLSearchParams(location.search);
+        let modified = false
 
         // Replace each configured parameter with its value in the state.
         Object.keys(params).forEach(param => {
@@ -148,28 +149,37 @@ function ReduxQuerySync({
             } = params[param]
             const value = selector(state)
             if (multiple ? arrayEqual(value, defaultValue) : value === defaultValue) {
-                locationParams.delete(param)
+                if (locationParams.has(param)) {
+                    locationParams.delete(param)
+                    modified = true
+                }
             } else if (multiple) {
-                locationParams.delete(param)
-                valueToArray(value).forEach(v => locationParams.append(param, valueToString(v)))
+                const arrayValue = valueToArray(value).map(valueToString)
+                if (!arrayEqual(locationParams.getAll(param), arrayValue)) {
+                    locationParams.delete(param)
+                    arrayValue.forEach(v => locationParams.append(param, v))
+                    modified = true
+                }
             } else {
-                locationParams.set(param, valueToString(value))
+                const stringValue = valueToString(value)
+                if (stringValue !== locationParams.get(param)) {
+                    locationParams.set(param, stringValue)
+                    modified = true
+                }
             }
             lastQueryValues[param] = value
         })
-        const newLocationSearchString = `?${locationParams}`
-        const oldLocationSearchString = location.search || '?'
 
         // Only update location if anything changed.
-        if (newLocationSearchString !== oldLocationSearchString) {
-            // Update location (but prevent triggering a state update).
-            ignoreLocationUpdate = true
+        if (modified) {
             const newLocation = {
                 pathname: location.pathname,
-                search: newLocationSearchString,
+                search: `?${locationParams}`,
                 hash: location.hash,
                 state: location.state,
             }
+            // Update location (but prevent triggering a state update).
+            ignoreLocationUpdate = true
             replaceState
                 ? history.replace(newLocation)
                 : history.push(newLocation)
